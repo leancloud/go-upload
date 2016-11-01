@@ -1,46 +1,44 @@
 package upload
 
 import (
-	"encoding/json"
 	"errors"
-	"fmt"
+	qiniu "github.com/qiniu/api.v6/io"
 	"io"
 
 	"github.com/levigross/grequests"
 )
 
-const version = "0.1.0"
-
-// File is the File's return type
-type File struct {
-	ObjectID string `json:"objectID"`
-	URL      string `json:"url"`
-}
-
-// Error is the LeanCloud API Server API common error format
-type Error struct {
-	Code         int    `json:"code"`
-	Content      string `json:"error"`
-	ErrorEventID string `json:"errorEventID"`
-}
-
-func (err Error) Error() string {
-	return fmt.Sprintf("LeanCloud API error %d: %s", err.Code, err.Content)
-}
-
 // Upload upload specific file to LeanCloud
-func Upload(appID string, appKey string, filename string, serverURL string, reader io.Reader, contentType string) (*File, error) {
-	opts := &grequests.RequestOptions{
+func Upload(name string, mime string, reader io.Reader, opts *Options) (*File, error) {
+	if opts.serverURL() == "https://api.leancloud.cn" {
+		tokens, err := getFileTokens(name, mime, opts)
+		if err != nil {
+			return nil, err
+		}
+		putRet := new(qiniu.PutRet)
+		err = qiniu.Put(nil, putRet, tokens.Token, tokens.Key, reader, &qiniu.PutExtra{
+			MimeType: mime,
+		})
+		if err != nil {
+			return nil, err
+		}
+		file := &File{
+			ObjectID: tokens.ObjectID,
+			URL:      tokens.URL,
+		}
+		return file, nil
+	}
+
+	reqOpts := &grequests.RequestOptions{
 		Headers: map[string]string{
-			"X-LC-Id":      appID,
-			"X-LC-Key":     appKey,
-			"Content-Type": contentType,
+			"X-LC-Id":  opts.AppID,
+			"X-LC-Key": opts.AppKey,
 		},
 		UserAgent:   "LeanCloud-Go-Upload/" + version,
 		RequestBody: reader,
 	}
 
-	resp, err := grequests.Post(serverURL+"/1.1/files/"+filename, opts)
+	resp, err := grequests.Post(opts.serverURL()+"/1.1/files/"+name, reqOpts)
 	if err != nil {
 		return nil, err
 	}
@@ -54,13 +52,4 @@ func Upload(appID string, appKey string, filename string, serverURL string, read
 		return nil, errors.New("Upload file failed")
 	}
 	return result, err
-}
-
-func newErrorFromBody(body []byte) error {
-	var err Error
-	err2 := json.Unmarshal([]byte(body), &err)
-	if err2 != nil {
-		return errors.New("Upload failed")
-	}
-	return err
 }

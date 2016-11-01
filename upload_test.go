@@ -11,8 +11,12 @@ const (
 )
 
 func TestUpload(t *testing.T) {
-	reader := bytes.NewReader([]byte("fuck ya"))
-	file, err := Upload(testAppID, testAppKey, "xxx", "https://api.leancloud.cn", reader, "text/plain")
+	reader := bytes.NewReader([]byte("foobarbaz"))
+	opts := &Options{
+		AppID:  testAppID,
+		AppKey: testAppKey,
+	}
+	file, err := Upload("xxxooo.txt", "text/plain", reader, opts)
 	if err != nil {
 		t.Error(err)
 		return
