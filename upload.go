@@ -4,20 +4,23 @@ import (
 	"errors"
 	qiniu "github.com/qiniu/api.v6/io"
 	"io"
+	"mime"
+	"os"
+	"path/filepath"
 
 	"github.com/levigross/grequests"
 )
 
 // Upload upload specific file to LeanCloud
-func Upload(name string, mime string, reader io.Reader, opts *Options) (*File, error) {
+func Upload(name string, mimeType string, reader io.Reader, opts *Options) (*File, error) {
 	if opts.serverURL() == "https://api.leancloud.cn" {
-		tokens, err := getFileTokens(name, mime, opts)
+		tokens, err := getFileTokens(name, mimeType, opts)
 		if err != nil {
 			return nil, err
 		}
 		putRet := new(qiniu.PutRet)
 		err = qiniu.Put(nil, putRet, tokens.Token, tokens.Key, reader, &qiniu.PutExtra{
-			MimeType: mime,
+			MimeType: mimeType,
 		})
 		if err != nil {
 			return nil, err
@@ -52,4 +55,20 @@ func Upload(name string, mime string, reader io.Reader, opts *Options) (*File, e
 		return nil, errors.New("Upload file failed")
 	}
 	return result, err
+}
+
+// UploadFileVerbose will open an file and upload it
+func UploadFileVerbose(name string, mimeType string, path string, opts *Options) (*File, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	return Upload(name, mimeType, f, opts)
+}
+
+// UploadFile will open an file and upload it. the file name and mime type is autodetected
+func UploadFile(path string, opts *Options) (*File, error) {
+	_, name := filepath.Split(path)
+	mimeType := mime.TypeByExtension(filepath.Ext(path))
+	return UploadFileVerbose(name, mimeType, path, opts)
 }
