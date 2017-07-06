@@ -27,5 +27,6 @@ func TestUpload(t *testing.T) {
 	}
 	if file.URL == "" {
 		t.Error("invalid url")
+		return
 	}
 }
