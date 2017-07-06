@@ -18,7 +18,7 @@ func TestGetFileKey(t *testing.T) {
 }
 
 func TestGetFileTokens(t *testing.T) {
-	_, err := getFileTokens("what", "text/plain", &Options{
+	_, err := getFileTokens("what", "text/plain", 12345, &Options{
 		AppID:  testAppID,
 		AppKey: testAppKey,
 	})
