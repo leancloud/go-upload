@@ -1,11 +1,13 @@
 package upload
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"io"
 	"io/ioutil"
 	"mime"
+	"mime/multipart"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -16,33 +18,82 @@ var client = &http.Client{
 	Timeout: 14*time.Second + 1*time.Second,
 }
 
+func getSeekerSize(seeker io.Seeker) (int64, error) {
+	size, err := seeker.Seek(0, io.SeekEnd)
+	if err != nil {
+		return 0, err
+	}
+	_, err = seeker.Seek(0, io.SeekStart)
+	if err != nil {
+		return 0, err
+	}
+	return size, nil
+}
+
 // Upload upload specific file to LeanCloud
 func Upload(name string, mimeType string, reader io.ReadSeeker, opts *Options) (*File, error) {
-	// if opts.serverURL() == "https://api.leancloud.cn" || opts.serverURL() == "https://leancloud.cn" {
-	// 	size, err := reader.Seek(0, io.SeekEnd)
-	// 	if err != nil {
-	// 		return nil, err
-	// 	}
-	// 	tokens, err := getFileTokens(name, mimeType, size, opts)
-	// 	if err != nil {
-	// 		return nil, err
-	// 	}
-	// 	putRet := new(qiniu.PutRet)
-	// 	err = qiniu.Put(nil, putRet, tokens.Token, tokens.Key, reader, &qiniu.PutExtra{
-	// 		MimeType: mimeType,
-	// 	})
-	// 	if err != nil {
-	// 		return nil, err
-	// 	}
-	// 	file := &File{
-	// 		ObjectID: tokens.ObjectID,
-	// 		URL:      tokens.URL,
-	// 	}
-	// 	return file, nil
-	// }
+	if opts.serverURL() == "https://api.leancloud.cn" || opts.serverURL() == "https://leancloud.cn" {
+		return uploadToQiniu(name, mimeType, reader, opts)
+	}
+	return uploadViaLeanCloud(name, mimeType, reader, opts)
+}
 
+func uploadToQiniu(name string, mimeType string, reader io.ReadSeeker, opts *Options) (*File, error) {
+	size, err := getSeekerSize(reader)
+	if err != nil {
+		return nil, err
+	}
+	tokens, err := getFileTokens(name, mimeType, size, opts)
+	if err != nil {
+		return nil, err
+	}
+
+	body := new(bytes.Buffer)
+	part := multipart.NewWriter(body)
+	if err := part.WriteField("key", tokens.Key); err != nil {
+		return nil, err
+	}
+	if err := part.WriteField("token", tokens.Token); err != nil {
+		return nil, err
+	}
+	writer, err := part.CreateFormFile("file", name)
+	if err != nil {
+		return nil, err
+	}
+	_, err = io.Copy(writer, reader)
+	if err != nil {
+		return nil, err
+	}
+	if err := part.Close(); err != nil {
+		return nil, err
+	}
+
+	request, err := http.NewRequest("POST", "https://up.qbox.me/", body)
+	request.Header.Set("Content-Type", part.FormDataContentType())
+	if err != nil {
+		return nil, err
+	}
+
+	response, err := client.Do(request)
+	if err != nil {
+		return nil, err
+	}
+	content, err := ioutil.ReadAll(response.Body)
+	if err != nil {
+		return nil, err
+	}
+	if response.StatusCode != 200 {
+		return nil, errors.New(string(content))
+	}
+
+	return &File{
+		ObjectID: tokens.ObjectID,
+		URL:      tokens.URL,
+	}, nil
+}
+
+func uploadViaLeanCloud(name string, mimeType string, reader io.ReadSeeker, opts *Options) (*File, error) {
 	url := opts.serverURL() + "/1.1/files/" + name
-	println(url)
 	request, err := http.NewRequest("POST", url, reader)
 	if err != nil {
 		return nil, err

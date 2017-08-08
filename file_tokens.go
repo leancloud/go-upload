@@ -3,6 +3,7 @@ package upload
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"io/ioutil"
 	"math/rand"
 	"net/http"
@@ -42,7 +43,7 @@ type fileTokens struct {
 	Provider  string `json:"provider"`
 	UploadURL string `json:"upload_url"`
 	Token     string `json:"token"`
-	Key       string
+	Key       string `json:"key"`
 }
 
 func getFileTokens(name string, mime string, size int64, opts *Options) (*fileTokens, error) {
@@ -70,18 +71,20 @@ func getFileTokens(name string, mime string, size int64, opts *Options) (*fileTo
 	request.Header.Set("X-LC-Id", opts.AppID)
 	request.Header.Set("X-LC-Key", opts.AppKey)
 	request.Header.Set("User-Agent", "LeanCloud-Go-Upload/"+version)
+	request.Header.Set("Content-Type", "Application/JSON")
 
 	response, err := client.Do(request)
 	if err != nil {
 		return nil, err
 	}
 	defer response.Body.Close()
-
 	body, err = ioutil.ReadAll(response.Body)
+
+	if response.StatusCode != 201 {
+		return nil, errors.New(string(body))
+	}
+
 	result := new(fileTokens)
 	err = json.Unmarshal(body, result)
-	if err == nil {
-		result.Key = key
-	}
 	return result, err
 }
