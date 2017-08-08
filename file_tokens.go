@@ -43,7 +43,7 @@ type fileTokens struct {
 	Provider  string `json:"provider"`
 	UploadURL string `json:"upload_url"`
 	Token     string `json:"token"`
-	Key       string `json:"key"`
+	Key       string
 }
 
 func getFileTokens(name string, mime string, size int64, opts *Options) (*fileTokens, error) {
@@ -86,5 +86,9 @@ func getFileTokens(name string, mime string, size int64, opts *Options) (*fileTo
 
 	result := new(fileTokens)
 	err = json.Unmarshal(body, result)
+	if err != nil {
+		return nil, err
+	}
+	result.Key = key // key is not in Server response
 	return result, err
 }
