@@ -1,7 +1,6 @@
 package upload
 
 import (
-	"bytes"
 	"encoding/json"
 	"errors"
 	"io"
@@ -48,27 +47,43 @@ func uploadToQiniu(name string, mimeType string, reader io.ReadSeeker, opts *Opt
 		return nil, err
 	}
 
-	body := new(bytes.Buffer)
-	part := multipart.NewWriter(body)
-	if err := part.WriteField("key", tokens.Key); err != nil {
-		return nil, err
-	}
-	if err := part.WriteField("token", tokens.Token); err != nil {
-		return nil, err
-	}
-	writer, err := part.CreateFormFile("file", name)
-	if err != nil {
-		return nil, err
-	}
-	_, err = io.Copy(writer, reader)
-	if err != nil {
-		return nil, err
-	}
-	if err := part.Close(); err != nil {
-		return nil, err
-	}
+	out, in := io.Pipe()
+	part := multipart.NewWriter(in)
+	done := make(chan error)
 
-	request, err := http.NewRequest("POST", "https://up.qbox.me/", body)
+	go func() {
+		if err := part.WriteField("key", tokens.Key); err != nil {
+			in.Close()
+			done <- err
+			return
+		}
+		if err := part.WriteField("token", tokens.Token); err != nil {
+			in.Close()
+			done <- err
+			return
+		}
+		writer, err := part.CreateFormFile("file", name)
+		if err != nil {
+			in.Close()
+			done <- err
+			return
+		}
+		_, err = io.Copy(writer, reader)
+		if err != nil {
+			in.Close()
+			done <- err
+			return
+		}
+		if err := part.Close(); err != nil {
+			in.Close()
+			done <- err
+			return
+		}
+		in.Close()
+		done <- nil
+	}()
+
+	request, err := http.NewRequest("POST", "https://up.qbox.me/", out)
 	request.Header.Set("Content-Type", part.FormDataContentType())
 	if err != nil {
 		return nil, err
@@ -78,6 +93,12 @@ func uploadToQiniu(name string, mimeType string, reader io.ReadSeeker, opts *Opt
 	if err != nil {
 		return nil, err
 	}
+
+	err = <-done
+	if err != nil {
+		return nil, err
+	}
+
 	content, err := ioutil.ReadAll(response.Body)
 	if err != nil {
 		return nil, err
