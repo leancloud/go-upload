@@ -86,7 +86,7 @@ func uploadToQiniu(name string, tokens *fileTokens, reader io.ReadSeeker, opts *
 		done <- nil
 	}()
 
-	request, err := http.NewRequest("POST", "https://up.qbox.me/", out)
+	request, err := http.NewRequest("POST", "https://upload.qiniup.com/", out)
 	request.Header.Set("Content-Type", part.FormDataContentType())
 	if err != nil {
 		return nil, err
